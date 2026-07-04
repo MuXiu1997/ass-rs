@@ -36,11 +36,49 @@ Dialogue: 0,0:00:05.00,0:00:10.00,Default,Speaker,0,0,0,,Second event
 Comment: 0,0:00:10.00,0:00:15.00,Default,Speaker,0,0,0,,Third event
 "#;
 
+const TEST_CONTENT_WITH_TEXT_COMMAS: &str = r#"[Script Info]
+Title: Event Commands Test
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Main,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:13:21.21,0:13:26.08,Main,smith,0000,0000,0000,,He is currently hiding somewhere \Nin the world, plotting something!
+Dialogue: 0,0:13:30.00,0:13:35.00,Main,smith,0000,0000,0000,,Second line, also with a comma
+"#;
+
 fn event_lines(content: &str) -> Vec<&str> {
     content
         .lines()
         .filter(|line| line.starts_with("Dialogue:") || line.starts_with("Comment:"))
         .collect()
+}
+
+#[test]
+fn test_parse_event_line_preserves_text_commas() {
+    let event = super::helpers::parse_event_line(
+        r"Dialogue: 0,0:13:21.21,0:13:26.08,Main,smith,0000,0000,0000,,He is currently hiding somewhere \Nin the world, plotting something!",
+    )
+    .unwrap();
+
+    assert_eq!(event.effect, "");
+    assert_eq!(
+        event.text,
+        r"He is currently hiding somewhere \Nin the world, plotting something!"
+    );
+}
+
+#[test]
+fn test_parse_event_line_preserves_parenthesized_effect_commas() {
+    let event = super::helpers::parse_event_line(
+        "Dialogue: 0,0:13:21.21,0:13:26.08,Main,smith,0000,0000,0000,Fade(255,0),Text",
+    )
+    .unwrap();
+
+    assert_eq!(event.effect, "Fade(255,0)");
+    assert_eq!(event.text, "Text");
 }
 
 #[test]
@@ -176,6 +214,52 @@ fn test_event_commands_skip_blank_line_after_events_format() {
     let lines = event_lines(&text);
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("Second event"));
+}
+
+#[test]
+fn test_event_commands_preserve_text_commas() {
+    let expected_first_text =
+        r"He is currently hiding somewhere \Nin the world, plotting something!";
+
+    let mut doc = EditorDocument::from_content(TEST_CONTENT_WITH_TEXT_COMMAS).unwrap();
+    TimingAdjustCommand::all_events(100, 100)
+        .execute(&mut doc)
+        .unwrap();
+    assert!(doc.text().contains("0:13:22.21,0:13:27.08"));
+    assert!(doc.text().contains(expected_first_text));
+    assert!(doc.text().contains("Second line, also with a comma"));
+
+    let mut doc = EditorDocument::from_content(TEST_CONTENT_WITH_TEXT_COMMAS).unwrap();
+    EventEffectCommand::set_effect(vec![0], "Fade(255,0)".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert!(lines[0].contains("Fade(255,0)"));
+    assert!(lines[0].contains(expected_first_text));
+    assert!(lines[1].contains("Second line, also with a comma"));
+
+    let mut doc = EditorDocument::from_content(TEST_CONTENT_WITH_TEXT_COMMAS).unwrap();
+    SplitEventCommand::new(0, "0:13:24.00".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert_eq!(lines.len(), 3);
+    assert!(lines[0].contains(expected_first_text));
+    assert!(lines[1].contains(expected_first_text));
+
+    let mut doc = EditorDocument::from_content(TEST_CONTENT_WITH_TEXT_COMMAS).unwrap();
+    MergeEventsCommand::new(0, 1)
+        .with_separator(" | ".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains(
+        r"He is currently hiding somewhere \Nin the world, plotting something! | Second line, also with a comma"
+    ));
 }
 
 #[test]

@@ -90,19 +90,13 @@ pub(super) fn parse_event_line(line: &str) -> core::result::Result<Event<'_>, Ed
         _ => return Err(EditorError::command_failed("Unknown event type")),
     };
 
-    // Parse fields carefully - Effect field can contain commas, so we need special handling
-    // Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-    let parts: Vec<&str> = fields_part.splitn(10, ',').collect();
-    if parts.len() < 10 {
+    let parts: Vec<&str> = fields_part.splitn(9, ',').collect();
+    if parts.len() < 9 {
         return Err(EditorError::command_failed(
             "Invalid event format: insufficient fields",
         ));
     }
 
-    // The issue is that parts[8] (Effect) and parts[9] (Text) might be incorrectly split
-    // if Effect contains commas. We need to rejoin them properly.
-
-    // First 8 fields are safe (no commas expected)
     let layer = parts[0].trim();
     let start = parts[1].trim();
     let end = parts[2].trim();
@@ -112,24 +106,18 @@ pub(super) fn parse_event_line(line: &str) -> core::result::Result<Event<'_>, Ed
     let margin_r = parts[6].trim();
     let margin_v = parts[7].trim();
 
-    // For Effect and Text, we need to find the correct comma that separates them
-    // Effect can contain commas, but Text is the final field
-
-    // Calculate where effect+text starts in the original string
-    let prefix_len = parts[0..8].iter().map(|s| s.len()).sum::<usize>() + 8; // +8 for commas
-    let remaining = &fields_part[prefix_len..];
-
-    // Find the last comma that's not inside parentheses
+    // Effect may contain parenthesized comma arguments, while Text may contain
+    // arbitrary commas. The separator is the first top-level comma after MarginV.
+    let remaining = parts[8];
     let mut split_point = None;
-    let chars: Vec<char> = remaining.chars().collect();
-    let mut paren_depth = 0;
 
-    for (i, &ch) in chars.iter().enumerate().rev() {
+    let mut paren_depth = 0usize;
+    for (idx, ch) in remaining.char_indices() {
         match ch {
-            ')' => paren_depth += 1,
-            '(' => paren_depth -= 1,
+            '(' => paren_depth += 1,
+            ')' if paren_depth > 0 => paren_depth -= 1,
             ',' if paren_depth == 0 => {
-                split_point = Some(i);
+                split_point = Some(idx);
                 break;
             }
             _ => {}
