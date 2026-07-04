@@ -1,17 +1,21 @@
 [package]
 name = "ass-renderer"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
+rust-version.workspace = true
 authors = ["ass-rs contributors"]
 description = "High-performance ASS subtitle renderer with modular backends"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ass-rs/ass-renderer"
+repository.workspace = true
+homepage = "https://github.com/wiedymi/ass-rs"
+documentation = "https://docs.rs/ass-renderer"
+readme = "README.md"
 keywords = ["ass", "subtitle", "renderer", "wgpu", "gpu"]
 categories = ["multimedia::video", "graphics", "rendering"]
 
 [dependencies]
 # Core dependency
-ass-core = { path = "../ass-core", version = "0.1.0" }
+ass-core = { path = "../ass-core", version = "0.1.2" }
 
 # Text shaping and rendering
 rustybuzz = "0.11"

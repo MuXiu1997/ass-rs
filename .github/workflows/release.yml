@@ -6,6 +6,7 @@ on:
       - 'v[0-9]+.*'
       - 'ass-core-v[0-9]+.*'
       - 'ass-editor-v[0-9]+.*'
+      - 'ass-renderer-v[0-9]+.*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -57,13 +58,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.target }} --all-features
+        run: cargo build --workspace --release --target ${{ matrix.target }}
 
   # Publish to crates.io
   publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
-    needs: ['create-release']
+    needs: ['create-release', 'build-release']
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -76,6 +77,8 @@ jobs:
             echo "PUBLISH_CRATE=ass-core" >> $GITHUB_ENV
           elif [[ "${{ needs.create-release.outputs.release_version }}" == ass-editor-v* ]]; then
             echo "PUBLISH_CRATE=ass-editor" >> $GITHUB_ENV
+          elif [[ "${{ needs.create-release.outputs.release_version }}" == ass-renderer-v* ]]; then
+            echo "PUBLISH_CRATE=ass-renderer" >> $GITHUB_ENV
           elif [[ "${{ needs.create-release.outputs.release_version }}" == v* ]]; then
             echo "PUBLISH_CRATE=workspace" >> $GITHUB_ENV
           fi
@@ -88,19 +91,28 @@ jobs:
       - name: Wait for ass-core to be available
         if: env.PUBLISH_CRATE == 'workspace'
         run: |
+          VERSION="${{ needs.create-release.outputs.release_version }}"
+          VERSION="${VERSION#v}"
           for i in {1..60}; do
-            if cargo search ass-core | awk '/^ass-core =/'; then
-              echo "ass-core is now available on crates.io"
-              break
+            if cargo search ass-core --limit 1 | grep -q "^ass-core = \"${VERSION}\""; then
+              echo "ass-core ${VERSION} is now available on crates.io"
+              exit 0
             fi
-            echo "Waiting for ass-core to be available... ($i/60)"
+            echo "Waiting for ass-core ${VERSION} to be available... ($i/60)"
             sleep 10
           done
+          echo "ass-core ${VERSION} did not become available on crates.io in time"
+          exit 1
           
       - name: Publish ass-editor
         if: env.PUBLISH_CRATE == 'ass-editor' || env.PUBLISH_CRATE == 'workspace'
         run: |
           cargo publish -p ass-editor --token ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Publish ass-renderer
+        if: env.PUBLISH_CRATE == 'ass-renderer' || env.PUBLISH_CRATE == 'workspace'
+        run: |
+          cargo publish -p ass-renderer --token ${{ secrets.CRATES_IO_TOKEN }}
 
   # Generate and upload documentation
   docs:
@@ -113,7 +125,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Build documentation
-        run: cargo doc --workspace --all-features --no-deps
+        run: cargo doc --workspace --no-deps
         
       - name: Upload to GitHub Pages
         if: github.ref == 'refs/heads/main'

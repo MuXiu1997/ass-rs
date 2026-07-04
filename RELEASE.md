@@ -4,9 +4,10 @@ This document describes the automated release process for the ass-rs workspace u
 
 ## Overview
 
-The ass-rs workspace contains two crates that are automatically published in the correct order:
+The ass-rs workspace contains three crates that are automatically published in the correct order:
 1. `ass-core` - The core parsing library
 2. `ass-editor` - The editor layer (depends on ass-core)
+3. `ass-renderer` - The rendering layer (depends on ass-core)
 
 ## Prerequisites
 
@@ -31,10 +32,13 @@ Set the following secret in your GitHub repository (Settings → Secrets → Act
 Update the version in the appropriate Cargo.toml files:
 ```toml
 # crates/ass-core/Cargo.toml
-version = "0.1.0"
+version = "<new-version>"
 
 # crates/ass-editor/Cargo.toml
-version = "0.1.0"
+version = "<new-version>"
+
+# crates/ass-renderer/Cargo.toml
+version = "<new-version>"
 ```
 
 ### 2. Update CHANGELOG
@@ -54,7 +58,7 @@ git push origin main
 The tag format determines what gets released:
 
 ```bash
-# Release both crates (workspace release)
+# Release all crates (workspace release)
 git tag -a v0.1.0 -m "Release version 0.1.0"
 
 # Release only ass-core
@@ -62,6 +66,9 @@ git tag -a ass-core-v0.1.1 -m "Release ass-core version 0.1.1"
 
 # Release only ass-editor
 git tag -a ass-editor-v0.1.1 -m "Release ass-editor version 0.1.1"
+
+# Release only ass-renderer
+git tag -a ass-renderer-v0.1.1 -m "Release ass-renderer version 0.1.1"
 
 # Push the tag
 git push origin --tags
@@ -74,7 +81,7 @@ The GitHub Actions workflow will automatically:
 2. Run all tests and checks
 3. Build release binaries for multiple platforms
 4. Publish to crates.io in the correct order:
-   - For workspace releases: publishes ass-core first, waits for indexing, then publishes ass-editor
+   - For workspace releases: publishes ass-core first, waits for indexing, then publishes ass-editor and ass-renderer
    - For individual releases: publishes only the tagged crate
 5. Generate and publish documentation
 
@@ -82,9 +89,10 @@ Monitor the progress in the Actions tab of your repository.
 
 ## Tag Formats
 
-- `v[0-9]+.*` - Triggers workspace release (both crates)
+- `v[0-9]+.*` - Triggers workspace release (all crates)
 - `ass-core-v[0-9]+.*` - Triggers ass-core release only
 - `ass-editor-v[0-9]+.*` - Triggers ass-editor release only
+- `ass-renderer-v[0-9]+.*` - Triggers ass-renderer release only
 
 ## Versioning Strategy
 
@@ -95,9 +103,9 @@ We follow [Semantic Versioning](https://semver.org/):
 
 ### Version Guidelines
 
-- During initial development (0.x.y), keep both crates at the same version
+- During initial development (0.x.y), keep all crates at the same version
 - After 1.0.0, versions can diverge based on individual crate changes
-- ass-editor must always depend on a compatible ass-core version
+- ass-editor and ass-renderer must always depend on a compatible ass-core version
 
 ## Troubleshooting
 
@@ -114,10 +122,10 @@ We follow [Semantic Versioning](https://semver.org/):
 
 If the automated release partially fails:
 
-1. **If ass-core published but ass-editor failed:**
+1. **If ass-core published but ass-editor or ass-renderer failed:**
    - Fix the issue
-   - Create a new tag for ass-editor only
-   - Push the tag to trigger just the ass-editor release
+   - Create a new tag for the failed crate only
+   - Push the tag to trigger just that crate release
 
 2. **If GitHub release creation failed:**
    - Manually create the release from the existing tag

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.2] - 2026-07-04
+
+### Fixed
+- ass-editor: event commands now skip blank and comment lines inside the
+  `[Events]` section instead of stopping before later dialogue/comment rows.
+- ass-editor: event command parsing now preserves text fields containing
+  commas while retaining parenthesized effect values such as `Fade(255,0)`.
+
+### Changed
+- Release workflow now publishes all workspace crates, including
+  `ass-renderer`, from `v*` workspace release tags.
+- ass-renderer crate metadata now points at the workspace repository and uses
+  the workspace `rust-version`.
+
 ### Added
 - Initial release of ass-core and ass-editor crates
 - Zero-copy ASS/SSA subtitle parsing with full v4+ support
@@ -57,4 +71,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Releases will be added here -->
 
-[Unreleased]: https://github.com/wiedymi/ass-rs/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/wiedymi/ass-rs/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/wiedymi/ass-rs/compare/v0.1.1...v0.1.2
