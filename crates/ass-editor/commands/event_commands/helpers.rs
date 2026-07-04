@@ -9,6 +9,71 @@ use ass_core::parser::ast::{Event, EventType, Span};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+/// Physical source range for a parsed event command target.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EventLine<'a> {
+    pub index: usize,
+    pub start: usize,
+    pub end: usize,
+    pub end_with_newline: usize,
+    pub line: &'a str,
+}
+
+/// Collect event lines from the `[Events]` section, skipping blank/comment lines.
+pub(super) fn collect_event_lines(
+    content: &str,
+) -> core::result::Result<Vec<EventLine<'_>>, EditorError> {
+    let events_start = content
+        .find("[Events]")
+        .ok_or_else(|| EditorError::command_failed("Events section not found"))?;
+
+    let events_content = &content[events_start..];
+    let format_line_end = events_content
+        .find("Format:")
+        .and_then(|format_pos| {
+            events_content[format_pos..]
+                .find('\n')
+                .map(|newline_pos| events_start + format_pos + newline_pos + 1)
+        })
+        .ok_or_else(|| EditorError::command_failed("Invalid events section format"))?;
+
+    let mut event_lines = Vec::new();
+    let mut current_index = 0;
+    let mut event_start = format_line_end;
+
+    while event_start < content.len() {
+        let newline_pos = content[event_start..].find('\n');
+        let line_end = newline_pos.map_or(content.len(), |pos| event_start + pos);
+        let end_with_newline = newline_pos.map_or(content.len(), |_| line_end + 1);
+        let line = &content[event_start..line_end];
+        let trimmed = line.trim_start();
+
+        if trimmed.starts_with('[') {
+            break;
+        }
+
+        if line.trim().is_empty() || trimmed.starts_with(';') || trimmed.starts_with('#') {
+            event_start = end_with_newline;
+            continue;
+        }
+
+        if line.starts_with("Dialogue:") || line.starts_with("Comment:") {
+            event_lines.push(EventLine {
+                index: current_index,
+                start: event_start,
+                end: line_end,
+                end_with_newline,
+                line,
+            });
+            current_index += 1;
+        }
+
+        event_start = end_with_newline;
+    }
+
+    Ok(event_lines)
+}
+
 /// Helper function to parse an ASS event line with proper comma handling
 /// Returns parsed Event struct or error if parsing fails
 pub(super) fn parse_event_line(line: &str) -> core::result::Result<Event<'_>, EditorError> {

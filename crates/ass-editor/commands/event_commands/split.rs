@@ -1,6 +1,6 @@
 //! Command to split a single event into two at a specific time.
 
-use super::helpers::parse_event_line;
+use super::helpers::{collect_event_lines, parse_event_line};
 use crate::commands::{CommandResult, EditorCommand};
 use crate::core::{EditorDocument, EditorError, Position, Range, Result};
 use ass_core::parser::ast::EventType;
@@ -42,117 +42,82 @@ impl EditorCommand for SplitEventCommand {
             EditorError::command_failed(format!("Invalid time format: {}", self.split_time))
         })?;
 
-        // Find the event to split
         let content = document.text();
-        let events_start = content
-            .find("[Events]")
-            .ok_or_else(|| EditorError::command_failed("Events section not found"))?;
+        let event_lines = collect_event_lines(&content)?;
 
-        // Skip to first event after format line
-        let events_content = &content[events_start..];
-        let format_line_end = events_content
-            .find("Format:")
-            .and_then(|format_pos| {
-                events_content[format_pos..]
-                    .find('\n')
-                    .map(|newline_pos| events_start + format_pos + newline_pos + 1)
-            })
-            .ok_or_else(|| EditorError::command_failed("Invalid events section format"))?;
+        if let Some(event_line) = event_lines
+            .into_iter()
+            .find(|event_line| event_line.index == self.event_index)
+        {
+            let event = parse_event_line(event_line.line)?;
 
-        // Find the event at the specified index
-        let mut current_index = 0;
-        let mut event_start = format_line_end;
+            // Validate split time is within event bounds
+            let start_time_cs = event
+                .start_time_cs()
+                .map_err(|_| EditorError::command_failed("Invalid start time in event"))?;
+            let end_time_cs = event
+                .end_time_cs()
+                .map_err(|_| EditorError::command_failed("Invalid end time in event"))?;
 
-        while event_start < content.len() {
-            let line_end = content[event_start..]
-                .find('\n')
-                .map(|pos| event_start + pos)
-                .unwrap_or(content.len());
-
-            if event_start >= line_end {
-                break;
+            if split_time_cs <= start_time_cs || split_time_cs >= end_time_cs {
+                return Err(EditorError::command_failed(
+                    "Split time must be between event start and end times",
+                ));
             }
 
-            let line = &content[event_start..line_end];
+            // Create two new events
+            let event_type_str = match event.event_type {
+                EventType::Dialogue => "Dialogue",
+                EventType::Comment => "Comment",
+                _ => "Dialogue", // Default fallback
+            };
+            let first_event = format!(
+                "{}: {},{},{},{},{},{},{},{},{},{}",
+                event_type_str,
+                event.layer,
+                event.start,
+                self.split_time,
+                event.style,
+                event.name,
+                event.margin_l,
+                event.margin_r,
+                event.margin_v,
+                event.effect,
+                event.text
+            );
 
-            // Check if this is an event line
-            if line.starts_with("Dialogue:") || line.starts_with("Comment:") {
-                if current_index == self.event_index {
-                    // Found the event to split - parse using ass-core's parser
-                    let event = parse_event_line(line)?;
+            let second_event = format!(
+                "{}: {},{},{},{},{},{},{},{},{},{}",
+                event_type_str,
+                event.layer,
+                self.split_time,
+                event.end,
+                event.style,
+                event.name,
+                event.margin_l,
+                event.margin_r,
+                event.margin_v,
+                event.effect,
+                event.text
+            );
 
-                    // Validate split time is within event bounds
-                    let start_time_cs = event
-                        .start_time_cs()
-                        .map_err(|_| EditorError::command_failed("Invalid start time in event"))?;
-                    let end_time_cs = event
-                        .end_time_cs()
-                        .map_err(|_| EditorError::command_failed("Invalid end time in event"))?;
+            // Replace the original event with the two new events
+            let replacement = format!("{first_event}\n{second_event}");
+            let range = Range::new(
+                Position::new(event_line.start),
+                Position::new(event_line.end),
+            );
+            document.replace(range, &replacement)?;
 
-                    if split_time_cs <= start_time_cs || split_time_cs >= end_time_cs {
-                        return Err(EditorError::command_failed(
-                            "Split time must be between event start and end times",
-                        ));
-                    }
-
-                    // Create two new events
-                    let event_type_str = match event.event_type {
-                        EventType::Dialogue => "Dialogue",
-                        EventType::Comment => "Comment",
-                        _ => "Dialogue", // Default fallback
-                    };
-                    let first_event = format!(
-                        "{}: {},{},{},{},{},{},{},{},{},{}",
-                        event_type_str,
-                        event.layer,
-                        event.start,
-                        self.split_time,
-                        event.style,
-                        event.name,
-                        event.margin_l,
-                        event.margin_r,
-                        event.margin_v,
-                        event.effect,
-                        event.text
-                    );
-
-                    let second_event = format!(
-                        "{}: {},{},{},{},{},{},{},{},{},{}",
-                        event_type_str,
-                        event.layer,
-                        self.split_time,
-                        event.end,
-                        event.style,
-                        event.name,
-                        event.margin_l,
-                        event.margin_r,
-                        event.margin_v,
-                        event.effect,
-                        event.text
-                    );
-
-                    // Replace the original event with the two new events
-                    let replacement = format!("{first_event}\n{second_event}");
-                    let range = Range::new(Position::new(event_start), Position::new(line_end));
-                    document.replace(range, &replacement)?;
-
-                    let end_pos = Position::new(event_start + replacement.len());
-                    return Ok(CommandResult::success_with_change(
-                        Range::new(Position::new(event_start), end_pos),
-                        end_pos,
-                    )
-                    .with_message(format!(
-                        "Split event {} at time {}",
-                        self.event_index, self.split_time
-                    )));
-                }
-                current_index += 1;
-            } else if line.starts_with('[') {
-                // Stop at next section
-                break;
-            }
-
-            event_start = line_end + 1;
+            let end_pos = Position::new(event_line.start + replacement.len());
+            return Ok(CommandResult::success_with_change(
+                Range::new(Position::new(event_line.start), end_pos),
+                end_pos,
+            )
+            .with_message(format!(
+                "Split event {} at time {}",
+                self.event_index, self.split_time
+            )));
         }
 
         Err(EditorError::command_failed(format!(

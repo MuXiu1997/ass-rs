@@ -1,7 +1,8 @@
 //! Command to delete multiple events from an ASS document.
 
+use super::helpers::collect_event_lines;
 use crate::commands::{CommandResult, EditorCommand};
-use crate::core::{EditorDocument, EditorError, Position, Range, Result};
+use crate::core::{EditorDocument, Position, Range, Result};
 
 #[cfg(not(feature = "std"))]
 use alloc::{string::ToString, vec::Vec};
@@ -36,55 +37,22 @@ impl EditorCommand for BatchDeleteEventsCommand {
         sorted_indices.sort_unstable_by(|a, b| b.cmp(a));
         sorted_indices.dedup();
 
-        let content = document.text().to_string();
-
-        // Find [Events] section
-        let events_start = content
-            .find("[Events]")
-            .ok_or_else(|| EditorError::command_failed("No [Events] section found"))?;
-
-        // Find Format line end
-        let format_line_end = content[events_start..]
-            .find("Format:")
-            .and_then(|format_pos| {
-                content[events_start + format_pos..]
-                    .find('\n')
-                    .map(|newline_pos| events_start + format_pos + newline_pos + 1)
-            })
-            .ok_or_else(|| EditorError::command_failed("Invalid events section format"))?;
-
-        // Collect all event positions
-        let mut event_positions = Vec::new();
-        let mut current_index = 0;
-        let mut event_start = format_line_end;
-
-        while event_start < content.len() {
-            let line_end = content[event_start..]
-                .find('\n')
-                .map(|pos| event_start + pos + 1) // Include newline
-                .unwrap_or(content.len());
-
-            if event_start >= line_end {
-                break;
-            }
-
-            let line = &content[event_start..line_end.saturating_sub(1)];
-
-            if line.starts_with("Dialogue:") || line.starts_with("Comment:") {
-                event_positions.push((current_index, event_start, line_end));
-                current_index += 1;
-            }
-
-            event_start = line_end;
-        }
+        let content = document.text();
+        let event_positions = collect_event_lines(&content)?;
 
         // Delete events in reverse order to avoid index shifting
         let mut total_deleted = 0;
         let mut first_delete_pos = Position::new(content.len());
 
         for index in &sorted_indices {
-            if let Some((_, start, end)) = event_positions.iter().find(|(idx, _, _)| idx == index) {
-                let range = Range::new(Position::new(*start), Position::new(*end));
+            if let Some(event_line) = event_positions
+                .iter()
+                .find(|event_line| event_line.index == *index)
+            {
+                let range = Range::new(
+                    Position::new(event_line.start),
+                    Position::new(event_line.end_with_newline),
+                );
                 document.delete(range)?;
                 total_deleted += 1;
 

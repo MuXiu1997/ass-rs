@@ -1,5 +1,6 @@
 //! Command to delete a single event from an ASS document.
 
+use super::helpers::collect_event_lines;
 use crate::commands::{CommandResult, EditorCommand};
 use crate::core::{EditorDocument, EditorError, Position, Range, Result};
 
@@ -25,52 +26,17 @@ impl DeleteEventCommand {
 
 impl EditorCommand for DeleteEventCommand {
     fn execute(&self, document: &mut EditorDocument) -> Result<CommandResult> {
-        let content = document.text().to_string();
-
-        // Find [Events] section
-        let events_start = content
-            .find("[Events]")
-            .ok_or_else(|| EditorError::command_failed("No [Events] section found"))?;
-
-        // Find Format line end
-        let format_line_end = content[events_start..]
-            .find("Format:")
-            .and_then(|format_pos| {
-                content[events_start + format_pos..]
-                    .find('\n')
-                    .map(|newline_pos| events_start + format_pos + newline_pos + 1)
-            })
-            .ok_or_else(|| EditorError::command_failed("Invalid events section format"))?;
-
-        let mut current_index = 0;
-        let mut event_start = format_line_end;
-        let mut delete_range: Option<Range> = None;
-
-        while event_start < content.len() {
-            let line_end = content[event_start..]
-                .find('\n')
-                .map(|pos| event_start + pos + 1) // Include newline
-                .unwrap_or(content.len());
-
-            if event_start >= line_end {
-                break;
-            }
-
-            let line = &content[event_start..line_end.saturating_sub(1)]; // Check without newline
-
-            if line.starts_with("Dialogue:") || line.starts_with("Comment:") {
-                if current_index == self.event_index {
-                    delete_range = Some(Range::new(
-                        Position::new(event_start),
-                        Position::new(line_end),
-                    ));
-                    break;
-                }
-                current_index += 1;
-            }
-
-            event_start = line_end;
-        }
+        let content = document.text();
+        let delete_range = collect_event_lines(&content)?
+            .into_iter()
+            .find_map(|event_line| {
+                (event_line.index == self.event_index).then(|| {
+                    Range::new(
+                        Position::new(event_line.start),
+                        Position::new(event_line.end_with_newline),
+                    )
+                })
+            });
 
         if let Some(range) = delete_range {
             document.delete(range)?;

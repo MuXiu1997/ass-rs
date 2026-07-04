@@ -1,6 +1,6 @@
 //! Command to merge two consecutive events into one.
 
-use super::helpers::parse_event_line;
+use super::helpers::{collect_event_lines, parse_event_line};
 use crate::commands::{CommandResult, EditorCommand};
 use crate::core::{EditorDocument, EditorError, Position, Range, Result};
 use ass_core::parser::ast::EventType;
@@ -55,51 +55,14 @@ impl EditorCommand for MergeEventsCommand {
         }
 
         let content = document.text();
-        let events_start = content
-            .find("[Events]")
-            .ok_or_else(|| EditorError::command_failed("Events section not found"))?;
-
-        // Skip to first event after format line
-        let events_content = &content[events_start..];
-        let format_line_end = events_content
-            .find("Format:")
-            .and_then(|format_pos| {
-                events_content[format_pos..]
-                    .find('\n')
-                    .map(|newline_pos| events_start + format_pos + newline_pos + 1)
+        let event_lines = collect_event_lines(&content)?;
+        let events: Vec<_> = event_lines
+            .into_iter()
+            .filter(|event_line| {
+                event_line.index == self.first_event_index
+                    || event_line.index == self.second_event_index
             })
-            .ok_or_else(|| EditorError::command_failed("Invalid events section format"))?;
-
-        // Find both events
-        let mut events = Vec::new();
-        let mut current_index = 0;
-        let mut event_start = format_line_end;
-
-        while event_start < content.len() {
-            let line_end = content[event_start..]
-                .find('\n')
-                .map(|pos| event_start + pos)
-                .unwrap_or(content.len());
-
-            if event_start >= line_end {
-                break;
-            }
-
-            let line = &content[event_start..line_end];
-
-            if line.starts_with("Dialogue:") || line.starts_with("Comment:") {
-                if current_index == self.first_event_index
-                    || current_index == self.second_event_index
-                {
-                    events.push((current_index, event_start, line_end, line.to_string()));
-                }
-                current_index += 1;
-            } else if line.starts_with('[') {
-                break;
-            }
-
-            event_start = line_end + 1;
-        }
+            .collect();
 
         if events.len() != 2 {
             return Err(EditorError::command_failed(
@@ -108,8 +71,8 @@ impl EditorCommand for MergeEventsCommand {
         }
 
         // Parse both events using ass-core's parser
-        let first_event_line = &events[0].3;
-        let second_event_line = &events[1].3;
+        let first_event_line = events[0].line;
+        let second_event_line = events[1].line;
 
         let first_event = parse_event_line(first_event_line)?;
         let second_event = parse_event_line(second_event_line)?;
@@ -142,8 +105,8 @@ impl EditorCommand for MergeEventsCommand {
         );
 
         // Replace both events with the merged one
-        let first_start = events[0].1;
-        let second_end = events[1].2 + 1; // Include newline
+        let first_start = events[0].start;
+        let second_end = events[1].end_with_newline;
         let range = Range::new(Position::new(first_start), Position::new(second_end));
         let replacement = format!("{merged_event}\n");
 

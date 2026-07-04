@@ -21,6 +21,28 @@ Dialogue: 0,0:00:05.00,0:00:10.00,Default,Speaker,0,0,0,,Second event
 Comment: 0,0:00:10.00,0:00:15.00,Default,Speaker,0,0,0,,Third event
 "#;
 
+const TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT: &str = r#"[Script Info]
+Title: Event Commands Test
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+
+Dialogue: 0,0:00:01.00,0:00:05.00,Default,Speaker,0,0,0,,First event
+Dialogue: 0,0:00:05.00,0:00:10.00,Default,Speaker,0,0,0,,Second event
+Comment: 0,0:00:10.00,0:00:15.00,Default,Speaker,0,0,0,,Third event
+"#;
+
+fn event_lines(content: &str) -> Vec<&str> {
+    content
+        .lines()
+        .filter(|line| line.starts_with("Dialogue:") || line.starts_with("Comment:"))
+        .collect()
+}
+
 #[test]
 fn test_split_event_command() {
     let mut doc = EditorDocument::from_content(TEST_CONTENT).unwrap();
@@ -82,6 +104,78 @@ fn test_timing_adjust_command() {
     assert!(doc.text().contains("0:00:03.00,0:00:07.00")); // First event shifted
     assert!(doc.text().contains("0:00:07.00,0:00:12.00")); // Second event shifted
     assert!(doc.text().contains("0:00:12.00,0:00:17.00")); // Third event shifted
+}
+
+#[test]
+fn test_event_commands_skip_blank_line_after_events_format() {
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    let result = TimingAdjustCommand::all_events(200, 200)
+        .execute(&mut doc)
+        .unwrap();
+    assert!(result.success);
+    assert!(result.content_changed);
+    assert!(doc.text().contains("0:00:03.00,0:00:07.00"));
+    assert!(doc.text().contains("0:00:07.00,0:00:12.00"));
+    assert!(doc.text().contains("0:00:12.00,0:00:17.00"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    SplitEventCommand::new(0, "0:00:03.00".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    assert_eq!(event_lines(&text).len(), 4);
+    assert!(doc.text().contains("0:00:01.00,0:00:03.00"));
+    assert!(doc.text().contains("0:00:03.00,0:00:05.00"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    MergeEventsCommand::new(0, 1)
+        .with_separator(" | ".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    assert_eq!(event_lines(&text).len(), 2);
+    assert!(doc.text().contains("First event | Second event"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    ToggleEventTypeCommand::single(0).execute(&mut doc).unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert!(lines[0].starts_with("Comment:"));
+    assert!(lines[1].starts_with("Dialogue:"));
+    assert!(lines[2].starts_with("Comment:"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    EventEffectCommand::set_effect(vec![0, 1], "Fade(255,0)".to_string())
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert!(lines[0].contains("Fade(255,0)"));
+    assert!(lines[1].contains("Fade(255,0)"));
+    assert!(!lines[2].contains("Fade(255,0)"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    DeleteEventCommand::new(0).execute(&mut doc).unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].contains("Second event"));
+
+    let mut doc =
+        EditorDocument::from_content(TEST_CONTENT_WITH_BLANK_LINE_AFTER_EVENTS_FORMAT).unwrap();
+    BatchDeleteEventsCommand::new(vec![0, 2])
+        .execute(&mut doc)
+        .unwrap();
+    let text = doc.text();
+    let lines = event_lines(&text);
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("Second event"));
 }
 
 #[test]
