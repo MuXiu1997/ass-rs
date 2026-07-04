@@ -192,7 +192,7 @@ fn run() -> Result<(), String> {
         });
 
         n += 1;
-        if n.is_multiple_of(200) {
+        if n % 200 == 0 {
             eprintln!("  swept {n} frames (t={t}cs)");
         }
         t += cfg.step;

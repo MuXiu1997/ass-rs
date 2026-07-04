@@ -37,11 +37,7 @@ fn build_background(mode: &str, width: u32, height: u32) -> Result<Vec<u8>, Stri
             let sq = 24u32;
             for y in 0..height {
                 for x in 0..width {
-                    let c = if (x / sq + y / sq).is_multiple_of(2) {
-                        56
-                    } else {
-                        96
-                    };
+                    let c = if (x / sq + y / sq) % 2 == 0 { 56 } else { 96 };
                     let i = (y * width + x) as usize * 3;
                     bg[i] = c;
                     bg[i + 1] = c;
@@ -147,7 +143,7 @@ fn run() -> Result<(), String> {
         }
         out.write_all(&rgb)
             .map_err(|e| format!("write frame {f}: {e}"))?;
-        if f.is_multiple_of(500) {
+        if f % 500 == 0 {
             eprintln!("  frame {f}/{n_frames} (t={time_cs}cs)");
         }
     }
