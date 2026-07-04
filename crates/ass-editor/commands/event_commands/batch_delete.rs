@@ -5,7 +5,7 @@ use crate::commands::{CommandResult, EditorCommand};
 use crate::core::{EditorDocument, Position, Range, Result};
 
 #[cfg(not(feature = "std"))]
-use alloc::{string::ToString, vec::Vec};
+use alloc::vec::Vec;
 
 /// Command to delete multiple events from the ASS document
 ///
