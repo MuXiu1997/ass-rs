@@ -20,6 +20,7 @@
 
 mod complexity;
 mod parser;
+mod recovery;
 mod types;
 
 #[cfg(feature = "plugins")]

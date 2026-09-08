@@ -6,6 +6,7 @@
 
 use super::complexity::calculate_tag_complexity;
 use super::parser::scan_tag_name;
+use super::recovery::empty_override;
 use super::types::{DiagnosticKind, OverrideTag, TagDiagnostic};
 use crate::plugin::{ExtensionRegistry, TagResult};
 use alloc::vec::Vec;
@@ -132,16 +133,14 @@ pub fn parse_override_block_with_registry<'a>(
                     }
                 }
             } else {
-                let span_end = (tag_start + 2).min(content.len());
-                diagnostics.push(TagDiagnostic {
-                    span: &content[tag_start..span_end],
-                    offset: start_pos + tag_start,
-                    kind: DiagnosticKind::EmptyOverride,
-                });
-                if char_pos < chars.len() {
-                    byte_pos += chars[char_pos].len_utf8();
-                    char_pos += 1;
-                }
+                diagnostics.push(empty_override(
+                    content,
+                    start_pos,
+                    tag_start,
+                    &mut byte_pos,
+                    &mut char_pos,
+                    &chars,
+                ));
             }
         } else {
             byte_pos += chars[char_pos].len_utf8();

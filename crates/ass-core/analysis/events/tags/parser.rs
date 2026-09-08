@@ -5,6 +5,7 @@
 //! allocating beyond the supplied output vectors.
 
 use super::complexity::calculate_tag_complexity;
+use super::recovery::empty_override;
 use super::types::{DiagnosticKind, OverrideTag, TagDiagnostic};
 use alloc::vec::Vec;
 
@@ -34,9 +35,9 @@ use alloc::vec::Vec;
 ///
 /// A tag name is an optional leading digit (for color/alpha tags like `\1c`)
 /// followed by ASCII letters. `\r` (reset style) and `\fn` (font name) are the
-/// only tags whose arguments may begin with ASCII letters without a delimiter
-/// (e.g. `\fnArial`, `\rDefault`), so scanning stops as soon as either name is
-/// matched to avoid swallowing the argument into the name.
+/// scanned here with an immediate ASCII name boundary (e.g. `\fnArial`,
+/// `\rDefault`). Color/alpha boundaries are resolved separately after any
+/// registry extension lookup.
 pub(super) fn scan_tag_name(
     content: &str,
     chars: &[char],
@@ -138,16 +139,14 @@ pub fn parse_override_block<'a>(
                     });
                 }
             } else {
-                let span_end = (tag_start + 2).min(content.len());
-                diagnostics.push(TagDiagnostic {
-                    span: &content[tag_start..span_end],
-                    offset: start_pos + tag_start,
-                    kind: DiagnosticKind::EmptyOverride,
-                });
-                if char_pos < chars.len() {
-                    byte_pos += chars[char_pos].len_utf8();
-                    char_pos += 1;
-                }
+                diagnostics.push(empty_override(
+                    content,
+                    start_pos,
+                    tag_start,
+                    &mut byte_pos,
+                    &mut char_pos,
+                    &chars,
+                ));
             }
         } else {
             byte_pos += chars[char_pos].len_utf8();
