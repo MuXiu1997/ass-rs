@@ -18,6 +18,7 @@
 //! - Memory: Zero allocations via borrowed references
 //! - Complexity: O(n) where n = character count
 
+mod color_name;
 mod complexity;
 mod parser;
 mod recovery;

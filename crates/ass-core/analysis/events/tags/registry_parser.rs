@@ -4,6 +4,7 @@
 //! custom [`TagHandler`](crate::plugin::TagHandler) implementations can claim
 //! tags before falling back to built-in complexity scoring.
 
+use super::color_name::split_color_name;
 use super::complexity::calculate_tag_complexity;
 use super::parser::scan_tag_name;
 use super::recovery::empty_override;
@@ -45,6 +46,9 @@ pub fn parse_override_block_with_registry<'a>(
             let name_char_start = char_pos;
             let name_start = byte_pos;
             (char_pos, byte_pos) = scan_tag_name(content, &chars, char_pos, byte_pos, name_start);
+            if !registry.is_some_and(|r| r.has_tag_handler(&content[name_start..byte_pos])) {
+                split_color_name(content, name_start, &mut char_pos, &mut byte_pos);
+            }
 
             if char_pos > name_char_start {
                 let name_end = byte_pos;

@@ -4,6 +4,7 @@
 //! collecting [`TagDiagnostic`]s for malformed or empty override syntax without
 //! allocating beyond the supplied output vectors.
 
+use super::color_name::split_color_name;
 use super::complexity::calculate_tag_complexity;
 use super::recovery::empty_override;
 use super::types::{DiagnosticKind, OverrideTag, TagDiagnostic};
@@ -86,6 +87,7 @@ pub fn parse_override_block<'a>(
             let name_char_start = char_pos;
             let name_start = byte_pos;
             (char_pos, byte_pos) = scan_tag_name(content, &chars, char_pos, byte_pos, name_start);
+            split_color_name(content, name_start, &mut char_pos, &mut byte_pos);
 
             if char_pos > name_char_start {
                 let name_end = byte_pos;
